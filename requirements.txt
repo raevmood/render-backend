@@ -1,4 +1,5 @@
 langchain
+langchain-community
 langchain-groq
 langserve
 langsmith
@@ -10,3 +11,8 @@ fastapi
 pydantic
 uvicorn
 python-dotenv
+pypdf
+sentence-transformers
+
+
+-e .
