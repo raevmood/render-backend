@@ -20,7 +20,7 @@ def node_analyzer(state: AssistantState) -> dict:
     )
 
     response = llm.invoke([{"role": "user", "content": prompt}])
-
+    # print(f"Analyzer response : {response}")
     response_text = response.content if hasattr(response, "content") else str(response)
     response_text = response_text.strip()
 
