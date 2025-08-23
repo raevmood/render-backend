@@ -34,5 +34,5 @@ def node_conversation(state: AssistantState) -> dict:
         response_text = str(response)
 
     logs = state.get("logs", []) + [{"step": "conversation", "llm": llm.model_name}]
-
+    print(response_text)
     return {"conversation_response": response_text, "logs": logs}
