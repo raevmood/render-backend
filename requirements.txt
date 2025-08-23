@@ -1,0 +1,12 @@
+langchain
+langchain-groq
+langserve
+langsmith
+langgraph
+chromadb
+langchain-huggingface
+huggingface-hub
+fastapi
+pydantic
+uvicorn
+python-dotenv
