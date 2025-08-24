@@ -18,7 +18,7 @@ api_key = os.getenv("GROQ_API_KEY")
 
 # LLM factory (Groq)
 def make_groq_llm(model: Optional[str] = None, temperature: float = 0.15, max_tokens: int = 512) -> ChatGroq:
-    model = model or os.getenv("GROQ_MODEL", "llama-3.1-8b")
+    model = model or os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
     if not api_key:
         raise EnvironmentError("GROQ_API_KEY not set in environment.")
     return ChatGroqWrapper(
