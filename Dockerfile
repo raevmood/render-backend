@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # Set work directory
-WORKDIR /
+WORKDIR /app
 
 # Copy only requirements first for caching
 COPY requirements.txt .
@@ -12,7 +12,7 @@ RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project files
-COPY . .
+COPY . /app
 
 # Expose API port
 EXPOSE 8000
