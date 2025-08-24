@@ -28,9 +28,6 @@ class ChatResponse(BaseModel):
     conversation_response: Optional[str] = None
     logs: Optional[list] = None
 
-
-ChatRequest.model_rebuild()
-ChatResponse.model_rebuild()
 # ---------------------------
 # Allowed subjects
 # ---------------------------
@@ -121,13 +118,14 @@ def normalize_request(req: ChatRequest) -> Dict[str, Any]:
 app = FastAPI(title="DirectEd Assistant API")
 
 # Allow CORS for local testing / frontend
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins="https://raevmood.github.io/frontend/", 
+    allow_credentials=True,
+    allow_methods=["POST"], 
+    allow_headers=["*"], 
 )
-
 graph_app = build_assistant_graph()
 llm_checker = make_groq_llm()
 
