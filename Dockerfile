@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # Set work directory
-WORKDIR /app
+WORKDIR /
 
 # Copy only requirements first for caching
 COPY requirements.txt .
