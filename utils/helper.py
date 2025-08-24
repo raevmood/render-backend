@@ -1,15 +1,20 @@
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 
-
-file_path = "docs"
-def pdf_loader(docs:str):
-    loader = DirectoryLoader(docs,glob="*.pdf",loader_cls=PyPDFLoader )
+def txt_loader(docs: str):
+    """
+    Load all .txt files from the specified directory.
+    """
+    loader = DirectoryLoader(
+        docs,
+        glob="*.txt",
+        loader_cls=TextLoader,
+        loader_kwargs={"encoding": "utf-8"} 
+    )
     documents = loader.load()
-
     return documents
 
 
