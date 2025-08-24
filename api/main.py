@@ -1,14 +1,24 @@
 # api/main.py
 import os
 from typing import Optional, Dict, Any, List
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import logging
 
-from langchain.chains import RetrievalQA
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-from components.graph import build_assistant_graph
-from components.base import get_vectorstore, make_groq_llm
+try:
+    from langchain.chains import RetrievalQA
+    from components.graph import build_assistant_graph
+    from components.base import get_vectorstore, make_groq_llm
+    DEPENDENCIES_AVAILABLE = True
+except ImportError as e:
+    logger.error(f"Import error: {e}")
+    DEPENDENCIES_AVAILABLE = False
 
 # ---------------------------
 # Request / Response Models
@@ -37,12 +47,71 @@ ALLOWED_SUBJECTS = [
     "Typescript", "machine learning"
 ]
 
+# Global variables for lazy initialization
+graph_app = None
+llm_checker = None
+
+
+# ---------------------------
+# Startup/Shutdown Context Manager
+# ---------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global graph_app, llm_checker
+    try:
+        if DEPENDENCIES_AVAILABLE:
+            graph_app = build_assistant_graph()
+            llm_checker = make_groq_llm()
+            logger.info("Graph + LLM checker initialized.")
+        else:
+            logger.warning("Dependencies not available, running in limited mode.")
+    except Exception as e:
+        logger.error(f"Error during startup: {e}")
+    
+    yield
+    
+    # Shutdown (cleanup if needed)
+    logger.info("Shutting down...")
+
+
+# ---------------------------
+# FastAPI App
+# ---------------------------
+app = FastAPI(
+    title="DirectEd Assistant API",
+    lifespan=lifespan
+)
+
+# Allow CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ---------------------------
+# Exception Handler
+# ---------------------------
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Global exception: {exc}")
+    return {"error": f"Internal server error: {str(exc)}"}
+
 
 # ---------------------------
 # RAG Handler for General Chat
 # ---------------------------
 def handle_general_chat(query: str) -> Dict[str, Any]:
     logs = []
+
+    if not DEPENDENCIES_AVAILABLE:
+        return {
+            "conversation_response": "Service temporarily unavailable - dependencies not loaded",
+            "logs": ["Dependencies not available"]
+        }
 
     try:
         llm = make_groq_llm()
@@ -70,6 +139,7 @@ def handle_general_chat(query: str) -> Dict[str, Any]:
 
     except Exception as e:
         logs.append(f"Error in RAG: {str(e)}")
+        logger.error(f"RAG error: {e}")
         return {"conversation_response": "Sorry, I couldn't process your query.", "logs": logs}
 
 
@@ -89,79 +159,70 @@ def normalize_request(req: ChatRequest) -> Dict[str, Any]:
 
     # Auto-detect subject if needed
     if not req.subject and req.auto_detect_topic and llm_checker is not None:
-        detect_prompt = f"""
-        You are a curriculum assistant.
-        Identify the most relevant subject for this query:
-        "{req.query}"
-        Return ONLY the subject name.
-        """
-        detection = llm_checker.invoke([{"role": "user", "content": detect_prompt}])
-        subject_name = getattr(detection, "content", str(detection)).strip()
-        state["subject"] = subject_name
+        try:
+            detect_prompt = f"""
+            You are a curriculum assistant.
+            Identify the most relevant subject for this query:
+            "{req.query}"
+            Return ONLY the subject name.
+            """
+            detection = llm_checker.invoke([{"role": "user", "content": detect_prompt}])
+            subject_name = getattr(detection, "content", str(detection)).strip()
+            state["subject"] = subject_name
+        except Exception as e:
+            logger.error(f"Subject detection error: {e}")
+            state["logs"].append(f"Subject detection failed: {str(e)}")
 
     return state
 
 
 # ---------------------------
-# FastAPI App
+# Root routes
 # ---------------------------
-app = FastAPI(title="DirectEd Assistant API")
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "dependencies": DEPENDENCIES_AVAILABLE,
+        "graph_initialized": graph_app is not None,
+        "llm_initialized": llm_checker is not None
+    }
 
-# Allow CORS for frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://raevmood.github.io/frontend/"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Lazy initialization
-graph_app = None
-llm_checker = None
-
-@app.on_event("startup")
-async def startup_event():
-    global graph_app, llm_checker
-    graph_app = build_assistant_graph()
-    llm_checker = make_groq_llm()
-    print("Graph + LLM checker initialized.")
-
-
-# ---------------------------
-# Root route
-# ---------------------------
 @app.get("/")
 def root():
     return {
         "status": "DirectEd Assistant API running",
         "routes": [
-            "/api/assistant/chat/invoke",
-            "/api/assistant/chat/playground/"
-        ]
+            "/api/assistant/chat",
+            "/health"
+        ],
+        "dependencies": DEPENDENCIES_AVAILABLE
     }
 
 
 # ---------------------------
 # Chat handler
 # ---------------------------
-def chat_handler(req: dict) -> ChatResponse:
-    # Convert dict → ChatRequest
-    if isinstance(req, dict) and "input" in req:
-        req_obj = ChatRequest(**req["input"])
-    elif isinstance(req, dict):
-        req_obj = ChatRequest(**req)
-    else:
-        req_obj = req
-
-    # If LLM/graph not initialized yet (Playground/schema inspection), return placeholder
-    if graph_app is None or llm_checker is None:
-        return ChatResponse(conversation_response="placeholder", logs=[])
-
+def chat_handler(req: ChatRequest) -> ChatResponse:
     try:
-        state = normalize_request(req_obj)
+        # If dependencies not available, return error
+        if not DEPENDENCIES_AVAILABLE:
+            return ChatResponse(
+                conversation_response="Service temporarily unavailable",
+                logs=["Dependencies not loaded"]
+            )
+
+        # If LLM/graph not initialized yet, try basic response
+        if graph_app is None or llm_checker is None:
+            return ChatResponse(
+                conversation_response="System initializing, please try again shortly",
+                logs=["System not fully initialized"]
+            )
+
+        state = normalize_request(req)
 
         # Educational requests
-        if req_obj.request_type in ["tutoring", "quiz_generation", "flashcard_creation", "content_creation"]:
+        if req.request_type in ["tutoring", "quiz_generation", "flashcard_creation", "content_creation"]:
             subject_text = (state["subject"] or "").lower()
 
             if subject_text and subject_text not in ALLOWED_SUBJECTS:
@@ -171,31 +232,49 @@ def chat_handler(req: dict) -> ChatResponse:
                 )
 
             if not subject_text:
-                prompt = f"Is the following query related to programming? Answer Yes or No:\n'{req_obj.query}'"
-                result = llm_checker.invoke([{"role": "user", "content": prompt}])
-                content = getattr(result, "content", str(result))
-                if "yes" not in content.lower():
+                try:
+                    prompt = f"Is the following query related to programming? Answer Yes or No:\n'{req.query}'"
+                    result = llm_checker.invoke([{"role": "user", "content": prompt}])
+                    content = getattr(result, "content", str(result))
+                    if "yes" not in content.lower():
+                        return ChatResponse(
+                            conversation_response="Sorry, only programming topics are supported.",
+                            logs=["Query not related to programming."]
+                        )
+                except Exception as e:
+                    logger.error(f"Programming check error: {e}")
                     return ChatResponse(
-                        conversation_response="Sorry, only programming topics are supported.",
-                        logs=["Query not related to programming."]
+                        conversation_response="Error processing request",
+                        logs=[f"Programming check failed: {str(e)}"]
                     )
 
             # Graph execution
-            result_state = graph_app.invoke(state)
-            return ChatResponse(
-                conversation_response=result_state.get("conversation_response"),
-                logs=result_state.get("logs", [])
-            )
+            try:
+                result_state = graph_app.invoke(state)
+                return ChatResponse(
+                    conversation_response=result_state.get("conversation_response"),
+                    logs=result_state.get("logs", [])
+                )
+            except Exception as e:
+                logger.error(f"Graph execution error: {e}")
+                return ChatResponse(
+                    conversation_response="Error processing educational request",
+                    logs=[f"Graph error: {str(e)}"]
+                )
 
         # General chat
-        rag_result = handle_general_chat(req_obj.query)
+        rag_result = handle_general_chat(req.query)
         return ChatResponse(
             conversation_response=rag_result["conversation_response"],
             logs=rag_result["logs"]
         )
 
     except Exception as e:
-        return ChatResponse(conversation_response=None, logs=[f"Error: {str(e)}"])
+        logger.error(f"Chat handler error: {e}")
+        return ChatResponse(
+            conversation_response="Sorry, an error occurred processing your request",
+            logs=[f"Error: {str(e)}"]
+        )
 
 
 # ---------------------------
@@ -203,7 +282,13 @@ def chat_handler(req: dict) -> ChatResponse:
 # ---------------------------
 @app.post("/api/assistant/chat", response_model=ChatResponse)
 def invoke_chat(req: ChatRequest):
-    return chat_handler(req)
+    try:
+        return chat_handler(req)
+    except Exception as e:
+        logger.error(f"Route error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-print("✅ FastAPI routes ready: /api/assistant/chat/invoke and /api/assistant/chat/playground/")
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

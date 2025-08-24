@@ -19,5 +19,5 @@ EXPOSE 8000
 
 ENV PYTHONPATH=/app
 
-# Entry point script
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port 8000"]
+# Use PORT environment variable from Render
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
