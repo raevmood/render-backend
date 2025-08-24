@@ -4,12 +4,13 @@ from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from langchain.chains import RetrievalQA
 
 from langserve import add_routes
 from langchain_core.runnables import RunnableLambda
 
 from components.graph import build_assistant_graph
-from components.base import make_groq_llm
+from components.base import get_vectorstore, make_groq_llm
 
 # ---------------------------
 # Request / Response Models
@@ -27,19 +28,65 @@ class ChatResponse(BaseModel):
     conversation_response: Optional[str] = None
     logs: Optional[list] = None
 
-# If using pydantic v2, ensure models are rebuilt for runtime introspection
-try:
-    # Pydantic v2 method
-    ChatRequest.model_rebuild()
-    ChatResponse.model_rebuild()
-except Exception:
-    # pydantic v1 has no model_rebuild — ignore
-    pass
+# ---------------------------
+# Allowed subjects
+# ---------------------------
+ALLOWED_SUBJECTS = ["artificial intelligence","programming","python", "javascript", "html", "css", "react", "nodejs", "data structures", "algorithms", "tailwind CSS", "Typescript", "machine learning"]
+
+
+# ---------------------------
+# RAG Handler for General Chat
+# ---------------------------
+def handle_general_chat(query: str) -> dict:
+    """
+    Handle general chat using RAG (retrieval + LLM generation).
+    Returns a dict with 'conversation_response' and 'logs'.
+    """
+
+    llm= make_groq_llm()
+
+    logs = []
+    try:
+        # Load vectorstore and setup retriever
+        vectorstore = get_vectorstore()
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 1})
+        logs.append(f"Retrieved top 3 documents for query: '{query}'")
+
+        # Friendly prompt template
+        friendly_prompt = f"""
+        You are a friendly and helpful assistant.
+        Answer the following question in a clear and approachable manner:
+        "{query}"
+        Use the retrieved documents to provide accurate context.
+        """
+
+        # Setup RetrievalQA chain
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            retriever=retriever,
+            return_source_documents=False
+        )
+
+        answer = qa_chain.invoke({"query": friendly_prompt})
+        logs.append("Generated friendly answer using RAG.")
+
+        return {"conversation_response": answer["result"], "logs": logs}
+
+    except Exception as e:
+        logs.append(f"Error in RAG processing: {str(e)}")
+        return {"conversation_response": "Sorry, I couldn't process your query.", "logs": logs}
+
+
+
+
 
 # ---------------------------
 # Normalize / helper
 # ---------------------------
 def normalize_request(req: ChatRequest) -> Dict[str, Any]:
+    if isinstance(req, dict):
+        req = ChatRequest(**req)
+
     state = {
         "user_id": req.user_id,
         "user_type": req.user_type,
@@ -54,11 +101,11 @@ def normalize_request(req: ChatRequest) -> Dict[str, Any]:
     if not req.subject and req.auto_detect_topic:
         llm = make_groq_llm()
         detect_prompt = f"""
-You are a curriculum assistant.
-Identify the most relevant DirectEd subject/topic for this query:
-"{req.query}"
-Return ONLY the subject name, nothing else.
-"""
+        You are a curriculum assistant.
+        Identify the most relevant DirectEd subject/topic for this query:
+        "{req.query}"
+        Return ONLY the subject name, nothing else.
+        """
         detection = llm.invoke([{"role": "user", "content": detect_prompt}])
         subject_name = getattr(detection, "content", str(detection)).strip()
         state["subject"] = subject_name
@@ -79,51 +126,76 @@ app.add_middleware(
 )
 
 graph_app = build_assistant_graph()
+llm_checker = make_groq_llm()
 
-# Root check route for quick verification
+# ---------------------------
+# Root check route
+# ---------------------------
 @app.get("/")
 def root():
     return {"status": "DirectEd Assistant API running", "routes": ["/api/assistant/chat (POST)", "/api/assistant/chat/playground/"]}
 
 # ---------------------------
-# Runnable handler (returns plain dict)
+# Runnable handler
 # ---------------------------
-def chat_handler(req: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Accepts a dict (compatible with ChatRequest) to be robust for RunnableLambda.
-    Returns a JSON-serializable dict.
-    """
+def chat_handler(req: ChatRequest) -> ChatResponse:
     try:
-        # If a Pydantic model was passed, convert to dict
-        if not isinstance(req, dict):
-            req = dict(req)
-        # Build minimal ChatRequest-like object
-        # (normalize_request expects ChatRequest, but we can adapt: create a small wrapper)
-        fake = ChatRequest(**req)  # this validates incoming payload
-        state = normalize_request(fake)
-        result_state = graph_app.invoke(state)
+        if isinstance(req, dict):
+            req = ChatRequest(**req)
 
-        final = {
-            "conversation_response": result_state.get("conversation_response"),
-            "logs": result_state.get("logs", []),
-        }
-        return final
+        state = normalize_request(req)
+
+        # Educational requests
+        if req.request_type in ["tutoring", "quiz_generation", "flashcard_creation", "content_creation"]:
+            subject_text = (state["subject"] or "").lower()
+            if subject_text and subject_text not in ALLOWED_SUBJECTS:
+                return ChatResponse(
+                    conversation_response=f"Sorry, we do not offer courses on '{subject_text}'. Please choose a computing/programming topic.",
+                    logs=["Subject not allowed."]
+                )
+            if not subject_text:
+                prompt = f"Is the following query related to programming or computing? Answer Yes or No:\n'{req.query}'"
+                result = llm_checker.invoke([{"role": "user", "content": prompt}])
+                content = getattr(result, "content", str(result))
+                if "yes" not in content.lower():
+                    return ChatResponse(
+                        conversation_response="Sorry, we currently only support programming/computing topics for tutoring. For general questions, you can chat normally.",
+                        logs=["Query not related to computing/programming."]
+                    )
+
+            # Invoke graph
+            result_state = graph_app.invoke(state)
+            return ChatResponse(
+                conversation_response=result_state.get("conversation_response"),
+                logs=result_state.get("logs", [])
+            )
+
+        # General chat via RAG
+        rag_result = handle_general_chat(req.query)
+        return ChatResponse(
+            conversation_response=rag_result["conversation_response"],
+            logs=rag_result["logs"]
+        )
+
     except Exception as e:
-        # return error in JSON to avoid 500 stack pages in playground
-        return {"error": str(e)}
+        return ChatResponse(
+            conversation_response=None,
+            logs=[f"Error: {str(e)}"]
+        )
 
-# Wrap into a RunnableLambda and provide type info for the playground UI
+# ---------------------------
+# LangServe Runnable
+# ---------------------------
 chat_runnable = RunnableLambda(chat_handler).with_types(
     input_type=ChatRequest,
-    output_type=Dict[str, Any]
+    output_type=ChatResponse
 )
 
-# Explicitly register the invoke AND playground endpoints (and stream endpoints if you want streaming)
+# Explicitly register the invoke AND playground endpoints
 add_routes(
     app,
     chat_runnable,
     path="/api/assistant/chat",
 )
 
-# Optional: debug helper - print that app is set up
 print("LangServe routes registered: /api/assistant/chat (invoke) and /api/assistant/chat/playground/")
