@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import logging
-
+from datetime import datetime
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -314,7 +314,93 @@ def debug_components():
         return {"error": f"Component import error: {str(e)}"}
 
 # Don't forget to add this import at the top
-from datetime import datetime
+
+# Add this debug chat handler to your main.py
+
+@app.post("/debug/full-chat")
+def debug_full_chat(req: ChatRequest):
+    """Debug the full chat processing pipeline"""
+    debug_info = []
+    
+    try:
+        debug_info.append("1. Received request successfully")
+        
+        # Test normalize_request
+        try:
+            state = normalize_request(req)
+            debug_info.append("2. normalize_request() - SUCCESS")
+            debug_info.append(f"   - State: {state}")
+        except Exception as e:
+            debug_info.append(f"2. normalize_request() - FAILED: {str(e)}")
+            return {"debug_info": debug_info, "error": "normalize_request failed"}
+        
+        # Test request type logic
+        debug_info.append(f"3. Request type: {req.request_type}")
+        
+        if req.request_type in ["tutoring", "quiz_generation", "flashcard_creation", "content_creation"]:
+            debug_info.append("4. Educational request path")
+            
+            subject_text = (state["subject"] or "").lower()
+            debug_info.append(f"5. Subject: '{subject_text}'")
+            
+            if subject_text and subject_text not in ALLOWED_SUBJECTS:
+                debug_info.append("6. Subject not allowed - early return")
+                return {
+                    "debug_info": debug_info,
+                    "result": f"Sorry, we do not offer courses on '{subject_text}'."
+                }
+            
+            if not subject_text:
+                debug_info.append("7. Testing programming check...")
+                try:
+                    prompt = f"Is the following query related to programming? Answer Yes or No:\n'{req.query}'"
+                    result = llm_checker.invoke([{"role": "user", "content": prompt}])
+                    content = getattr(result, "content", str(result))
+                    debug_info.append(f"8. Programming check result: {content}")
+                    
+                    if "yes" not in content.lower():
+                        debug_info.append("9. Not programming related - early return")
+                        return {
+                            "debug_info": debug_info,
+                            "result": "Sorry, only programming topics are supported."
+                        }
+                except Exception as e:
+                    debug_info.append(f"8. Programming check FAILED: {str(e)}")
+                    return {"debug_info": debug_info, "error": "Programming check failed"}
+            
+            # Test graph execution
+            debug_info.append("10. About to call graph_app.invoke()...")
+            try:
+                result_state = graph_app.invoke(state)
+                debug_info.append("11. Graph execution - SUCCESS")
+                return {
+                    "debug_info": debug_info,
+                    "result": result_state.get("conversation_response"),
+                    "logs": result_state.get("logs", [])
+                }
+            except Exception as e:
+                debug_info.append(f"11. Graph execution - FAILED: {str(e)}")
+                return {"debug_info": debug_info, "error": f"Graph execution failed: {str(e)}"}
+        
+        else:
+            debug_info.append("4. General chat path")
+            debug_info.append("5. About to call handle_general_chat()...")
+            
+            try:
+                rag_result = handle_general_chat(req.query)
+                debug_info.append("6. handle_general_chat() - SUCCESS")
+                return {
+                    "debug_info": debug_info,
+                    "result": rag_result["conversation_response"],
+                    "logs": rag_result["logs"]
+                }
+            except Exception as e:
+                debug_info.append(f"6. handle_general_chat() - FAILED: {str(e)}")
+                return {"debug_info": debug_info, "error": f"RAG failed: {str(e)}"}
+                
+    except Exception as e:
+        debug_info.append(f"OUTER EXCEPTION: {str(e)}")
+        return {"debug_info": debug_info, "error": f"Outer exception: {str(e)}"}
 # ---------------------------
 # FastAPI Routes
 # ---------------------------
