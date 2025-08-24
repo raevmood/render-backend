@@ -28,6 +28,9 @@ class ChatResponse(BaseModel):
     conversation_response: Optional[str] = None
     logs: Optional[list] = None
 
+
+ChatRequest.model_rebuild()
+ChatResponse.model_rebuild()
 # ---------------------------
 # Allowed subjects
 # ---------------------------
