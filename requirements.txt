@@ -15,4 +15,3 @@ pypdf
 sentence-transformers
 sse-starlette
 
--e .
