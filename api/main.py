@@ -276,7 +276,45 @@ def chat_handler(req: ChatRequest) -> ChatResponse:
             logs=[f"Error: {str(e)}"]
         )
 
+# Add these endpoints to your main.py
 
+@app.post("/debug/simple")
+def debug_simple():
+    """Simple test endpoint"""
+    return {"status": "debug endpoint works", "timestamp": str(datetime.now())}
+
+@app.post("/debug/chat")
+def debug_chat(req: ChatRequest):
+    """Debug version of chat endpoint"""
+    try:
+        return {
+            "status": "received_request",
+            "received_data": {
+                "user_id": req.user_id,
+                "user_type": req.user_type,
+                "request_type": req.request_type,
+                "subject": req.subject,
+                "query": req.query[:50] + "..." if len(req.query) > 50 else req.query
+            },
+            "dependencies_available": DEPENDENCIES_AVAILABLE,
+            "graph_initialized": graph_app is not None,
+            "llm_initialized": llm_checker is not None
+        }
+    except Exception as e:
+        return {"error": f"Debug endpoint error: {str(e)}"}
+
+@app.post("/debug/components")
+def debug_components():
+    """Test if components can be imported"""
+    try:
+        from components.graph import build_assistant_graph
+        from components.base import get_vectorstore, make_groq_llm
+        return {"status": "components imported successfully"}
+    except Exception as e:
+        return {"error": f"Component import error: {str(e)}"}
+
+# Don't forget to add this import at the top
+from datetime import datetime
 # ---------------------------
 # FastAPI Routes
 # ---------------------------
