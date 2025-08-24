@@ -1,0 +1,116 @@
+DirectEd Curriculum Overview
+
+Empowering Africa's Next Generation of Tech Leaders
+
+DirectEd is committed to bridging the global skills gap by providing world-class training and remote paid internships with U.S. and European companies. Our curriculum is designed to equip students with the technical, entrepreneurial, and soft skills necessary for success in the modern tech industry.
+
+ 1. CS50 Python Course (1 Week)
+
+Introduction to Programming
+
+Platform: Remote, mobile-friendly
+
+Content: Adapted from Harvard's CS50 Introduction to Computer Science
+
+Objective: Introduce students to the fundamentals of programming using Python
+
+Outcome: Top performers are selected for the Bootcamp
+Directed Development
++1
+Directed Development
++1
+Directed Development
+
+ 2. Bootcamp (16 Weeks)
+
+Intensive Skill Development
+
+Format: Remote, full-time
+
+Curriculum:
+
+Technical Skills: MERN stack development, UI/UX design, Artificial Intelligence
+
+Soft Skills: Communication, teamwork, problem-solving
+
+Entrepreneurship: Startup methodologies, product development, business acumen
+
+Tracks Offered:
+
+Full-stack Web Development
+
+UI/UX Design
+
+**Artificial Intelligence & Automation
+Directed Development
++2
+Quaker Valley School District
++2
+
+3. Internship (8–18 Months)
+
+Real-World Experience
+
+Placement: Remote internships with U.S. and European tech companies
+
+Structure:
+
+Team Collaboration: Work in teams of four with mentorship from industry professionals
+
+Specialization Tracks:
+
+Blockchain
+
+Cloud Computing
+
+Quality Assurance
+
+Advanced Artificial Intelligence
+
+Outcome: Graduates gain hands-on experience and are prepared for full-time employment
+Directed Development
++1
+Directed Development
+Quaker Valley School District
++3
+Directed Development
++3
+Directed Development
++3
+
+Additional Features
+
+Accessibility: Courses are designed to be accessible on mobile devices, ensuring that students from various backgrounds can participate
+
+Global Reach: Open to students from partner schools across Africa
+
+No Upfront Cost: Students can join the program without any initial financial investment
+
+Continuous Support: Ongoing mentorship and career guidance throughout the program
+Directed Development
++5
+Directed Development
++5
+Directed Development
++5
+Directed Development
++3
+Directed Development
++3
+BenchPrep Blog
++3
+
+Vision
+
+"A world in which any person can realize their full potential, regardless of their draw in the lottery of life."
+Directed Development
++4
+Directed Development
++4
+Directed Development
++4
+
+Impact
+
+DirectEd aims to transform the tech landscape by providing high-quality education and real-world experience to talented individuals, enabling them to contribute to the global tech industry.
+Directed Development
