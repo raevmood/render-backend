@@ -17,8 +17,7 @@ COPY . /app
 # Expose API port
 EXPOSE 8000
 
-# Set environment variables (example)
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 # Entry point script
 CMD ["sh", "-c", "python scripts/build_knowledge_base.py && uvicorn api.main:app --host 0.0.0.0 --port 8000"]
